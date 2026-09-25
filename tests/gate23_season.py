@@ -1,7 +1,7 @@
 """ГЕЙТ 23: полный тестовый сезон на реальном коде.
 
 Лига 2×6 клубов, владельцы с никами, 2 круга (10 туров), 16 капперов с разными стратегиями
-(случайные, фавориты, экспрессы, охотники за value), кэшауты, черновики, спонсоры, апгрейды
+(случайные, фавориты, экспрессы, «аналитики», считающие шансы по голам сами), кэшауты, черновики, спонсоры, апгрейды
 стадиона, правки счёта, финал сезона с призовыми и 3↑/3↓.
 Счёт матча разыгрывается по скрытой «настоящей силе» клуба (Elo её не знает на старте).
 
@@ -67,6 +67,12 @@ def poisson(lam):
         k += 1
 
 
+def true_lambdas(sh, sa):
+    """«Настоящие» ожидаемые голы по скрытой силе: не зависит от модели кэфов (FIFA ≈ 3.2 гола)."""
+    d = (sh - sa) / 800
+    return max(0.2, 1.6 * 10 ** d), max(0.2, 1.6 * 10 ** -d)
+
+
 db.init_db()
 
 # ===== лига, клубы, владельцы, ники =====
@@ -105,7 +111,7 @@ for cid in clubs[:2]:
 budget0 = {cid: q1("SELECT budget FROM clubs WHERE id=?", (cid,))["budget"] for cid in clubs}
 
 # ===== капперы =====
-STRATS = ["random"] * 4 + ["favorite"] * 4 + ["express"] * 4 + ["value"] * 4
+STRATS = ["random"] * 4 + ["favorite"] * 4 + ["express"] * 4 + ["analyst"] * 4
 bettors = []
 c = db.db()
 for i, s in enumerate(STRATS):
@@ -152,10 +158,24 @@ def place(b, legs, amount):
         return None
 
 
+def goals_model(m):
+    """Модель «аналитика»: средние голы клубов в турнире (атака + оборона соперника), от 3 матчей."""
+    st = {}
+    for cid in (m["home_club_id"], m["away_club_id"]):
+        r = q1("SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN home_club_id=? THEN score1 ELSE score2 END),0) gf, "
+               "COALESCE(SUM(CASE WHEN home_club_id=? THEN score2 ELSE score1 END),0) ga FROM matches "
+               "WHERE tournament_id=? AND status='confirmed' AND (home_club_id=? OR away_club_id=?)",
+               (cid, cid, tid, cid, cid))
+        if r["n"] < 3:
+            return None
+        st[cid] = (r["gf"] / r["n"], r["ga"] / r["n"])
+    h, a = st[m["home_club_id"]], st[m["away_club_id"]]
+    return markets.market_probs_from_lambdas(max(0.2, (h[0] + a[1]) / 2), max(0.2, (a[0] + h[1]) / 2))
+
+
 def bet_round():
     global drafts
     ms = open_matches()
-    radar = {(p["match_id"], p["market_code"]) for p in match_insights.value_radar(200)}
     for b in bettors:
         u = urow(b["tg"])
         if u["balance"] < 10:
@@ -182,8 +202,18 @@ def bet_round():
                     drafts += 1
                 except BetError:
                     pass
-        elif s == "value":
-            for mid, code in [x for x in radar if any(m["id"] == x[0] for m in ms)][:3]:
+        elif s == "analyst":
+            # сам считает шансы по голам клубов из статистики (без Elo) и берёт перевес 5+ п.п.
+            picks = []
+            for m in ms:
+                probs = goals_model(m)
+                if not probs:
+                    continue
+                for code, odd in mkts(m["id"]).items():
+                    edge = probs.get(code, 0) - 1 / odd
+                    if edge >= 0.05:
+                        picks.append((edge, m["id"], code))
+            for _, mid, code in sorted(picks, reverse=True)[:3]:
                 bid = place(b, [{"match_id": mid, "market_code": code}], stake)
                 if bid:
                     value_legs.append((bid, mid, code))
@@ -210,7 +240,7 @@ for tour in range(1, total_tours + 1):
     # половина матчей тура играется, потом часть капперов кэшаутит экспрессы
     half = len(ms) // 2
     for i, m in enumerate(ms):
-        lh, la = markets.lambdas(strength[m["home_club_id"]], strength[m["away_club_id"]])
+        lh, la = true_lambdas(strength[m["home_club_id"]], strength[m["away_club_id"]])
         s1, s2 = poisson(lh), poisson(la)
         results.finalize_match(m["id"], s1, s2, None, None, [], actor="manual")
         if rng.random() < 0.08:  # спор/правка счёта судьёй
@@ -308,7 +338,7 @@ if not QUIET:
     for k, (st_, ret) in sorted(groups.items(), key=lambda x: -x[1][0]):
         print(f"  {k:14} ставок {st_:6}  → {((st_ - ret) / st_ * 100):6.1f}%")
     vb = [q1("SELECT status FROM bets WHERE id=?", (b,))["status"] for b, _, _ in value_legs]
-    print(f"\nValue-ставки: {len(vb)}, зашло {vb.count('won')}, кэшаут {vb.count('cashout')}")
+    print(f"\nСтавки аналитика: {len(vb)}, зашло {vb.count('won')}, кэшаут {vb.count('cashout')}")
     print("\nКлубы (до финала):")
     tot = {k: q1("SELECT COALESCE(SUM(amount),0) s FROM club_ledger WHERE kind=?", (k,))["s"]
            for k in ("stadium", "sponsor", "sponsor_sign", "stadium_upgrade")}

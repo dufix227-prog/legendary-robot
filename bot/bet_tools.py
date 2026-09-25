@@ -2,7 +2,7 @@
 
 Кэшаут — только прематч и в том же окне, что приём ставок (тур открыт, матч pending):
 сумма = выплата при выигрыше × P(оставшиеся ноги зайдут) × (1 − маржа кэшаута),
-P — честная вероятность по текущему Elo (та же модель, что даёт кэфы).
+P — честная вероятность по той же модели, что даёт кэфы (Elo + голы турнира).
 """
 import json
 
@@ -55,11 +55,7 @@ def _quote(c, bet: dict) -> dict:
             return no("Матч уже начался или сыгран — кэшаут закрыт")
         if m["id"] in paused_ids:
             return no("Приём ставок на матч приостановлен")
-        elos = []
-        for cid in (m["home_club_id"], m["away_club_id"]):
-            r = c.execute("SELECT elo FROM clubs WHERE id=?", (cid,)).fetchone()
-            elos.append(r["elo"] if r else 1000)
-        p = markets_engine.market_probs(*elos).get(leg["market_code"])
+        p = markets_engine.match_probs(c, dict(m)).get(leg["market_code"])
         if p is None:
             return no("Рынок не поддерживает кэшаут")
         prob *= p

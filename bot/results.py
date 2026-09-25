@@ -221,7 +221,14 @@ def finalize_match(match_id: int, score1: int, score2: int,
             except Exception:
                 log.exception("settle_match упал на матче %s", mid)
 
-    # 8) кубок: серия решилась/переигралась → следующая стадия, пересборка пар, финал
+    # 8) линия: результат сдвинул Elo и голы — пересчитать кэфы открытых матчей турнира
+    try:
+        import markets as markets_engine
+        markets_engine.refresh_open(tournament_id)
+    except Exception:
+        log.exception("пересчёт кэфов после матча %s упал", match_id)
+
+    # 9) кубок: серия решилась/переигралась → следующая стадия, пересборка пар, финал
     if m.get("tie_id"):
         try:
             import league
