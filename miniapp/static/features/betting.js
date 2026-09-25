@@ -369,7 +369,7 @@ async function renderLeaderboard(root) {
   const param = lbState.scope === 'season' ? 'tournament_id' : 'division_id';
   try {
     const data = await api(`/api/leaderboard/${lbState.scope}?${param}=${lbState.id}`);
-    const row = (r, me) => `<div class="lb-row ${me ? 'me' : ''}">
+    const row = (r, me) => `<div class="lb-row ${me ? 'me' : ''}" data-profile="${r.user_id}">
       <span class="pos">${r.position <= 3 ? ['🥇', '🥈', '🥉'][r.position - 1] : r.position}</span>
       <span class="nm">${esc(r.name)}<small>${r.bets} ст. · ${pct(r.hit_rate)} · кэф ${odds(r.avg_odds)}</small></span>
       <span class="pr ${r.profit >= 0 ? 'pos' : 'neg'}">${signed(r.profit)}<small>ROI ${pct(r.roi)}</small></span></div>`;

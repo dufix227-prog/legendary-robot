@@ -34,10 +34,12 @@ function toLocalInput(utc) {
 hooks.matchSheet.push((md, data) => {
   if (!data?.home || !data?.away) return;
   const stadium = data.home?.stadium_name;
+  if (data.status !== 'pending' && !data.scheduled_at && !stadium) return;  // сыгранный матч без времени — строка не нужна
   const box = document.createElement('div');
   box.className = 'kickoff-box';
-  box.innerHTML = `<div class="kickoff-line">🕒 <span id="ko-text">${data.scheduled_at ? esc(fmtTime(data.scheduled_at)) : 'время не назначено'}</span>
-    ${stadium ? `<span class="sub">· 🏟 ${esc(stadium)}</span>` : ''}</div>`;
+  const showTime = data.status === 'pending' || data.scheduled_at;
+  box.innerHTML = `<div class="kickoff-line">${showTime ? `🕒 <span id="ko-text">${data.scheduled_at ? esc(fmtTime(data.scheduled_at)) : 'время не назначено'}</span>` : ''}
+    ${stadium ? `<span class="sub">${showTime ? '· ' : ''}🏟 ${esc(stadium)}</span>` : ''}</div>`;
   md.querySelector('.mc-teams')?.after(box);
   if (data.status !== 'pending') return;
   api(`/api/matches/${data.id}/schedule`).then((s) => {

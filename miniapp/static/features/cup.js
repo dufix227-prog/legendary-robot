@@ -34,10 +34,7 @@ function setActive(on) {
   cupState.active = on;
   $('#view-tables')?.classList.toggle('cup-mode', on);
   $('#cups-wrap').hidden = !on;
-  if (on) {
-    $('#standings-wrap').hidden = true;
-    $('#results-wrap').hidden = true;
-  }
+  if (on) document.querySelectorAll('#view-tables [data-tab-wrap]').forEach((w) => { w.hidden = true; });
 }
 
 function onTabClick(ev) {

@@ -18,6 +18,7 @@ import elo as elo_engine  # noqa: E402
 import league  # noqa: E402
 import markets as markets_engine  # noqa: E402
 import settings as appsettings  # noqa: E402
+from bet_tools import rank_by_level  # noqa: E402,F401
 from clubs_catalog import FORMAT_NAMES  # noqa: E402
 
 from .helpers import require_active_user  # noqa: E402
@@ -248,6 +249,8 @@ async def api_match_detail(request):
         "SELECT market_code, odds, recorded_at FROM odds_history WHERE match_id=? ORDER BY id",
         (mid,)).fetchall()]
     data["odds_history"] = hist
+    import league_stats
+    data["has_photo"] = bool(league_stats.screenshot_file(m))
     c.close()
     return j(data)
 
@@ -319,19 +322,6 @@ async def api_notifications(request):
 
 
 # ===== прогрессия (кабинет) =====
-
-def rank_by_level(level: int) -> str:
-    # звания от уровня: 1 Окурок → 2-3 Пепел → 4-5 Сигарета → 6-9 Сигара → 10+ Легенда
-    if level >= 10:
-        return "Легенда"
-    if level >= 6:
-        return "Сигара"
-    if level >= 4:
-        return "Сигарета"
-    if level >= 2:
-        return "Пепел"
-    return "Окурок"
-
 
 async def api_progression(request):
     u = require_active_user(request)

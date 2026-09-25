@@ -346,9 +346,7 @@ function renderMatchDetail() {
       <span class="sub">форма</span>
       <div class="form-letters">${formLetters(data.away?.form)}</div>
     </div>` : ''}
-    ${data.goals?.length ? `<div class="card" style="margin-top:14px">${data.goals.map((g) => `
-      <div class="goal-row"><span>${g.minute != null ? g.minute + "'" : '•'} ${esc(g.raw_name)}</span>
-      <span class="sub">${g.side === 'home' ? esc(data.home?.name || 'дома') : esc(data.away?.name || 'гости')}</span></div>`).join('')}</div>` : ''}
+    <div id="match-events-slot"></div>
     ${groups.length ? groups.map(([title, list]) => `<div class="markets-group">
       <div class="sub">${esc(title)}</div>
       <div class="mc-markets">
@@ -521,7 +519,7 @@ function renderAll() {
 }
 
 // для фич: перерисовка после внешней правки купона (черновики), баланс, переходы
-Object.assign(actions, { renderAll, renderCoupon, renderProfile, refreshWallet, refreshLine, showView, saveCoupon });
+Object.assign(actions, { renderAll, renderCoupon, renderProfile, refreshWallet, refreshLine, showView, saveCoupon, openMatch });
 
 /* ===== init ===== */
 
@@ -642,9 +640,9 @@ $('#tabs-tables')?.addEventListener('click', (ev) => {
   document.querySelectorAll('#tabs-tables .tab').forEach((t) => t.classList.remove('active'));
   tab.classList.add('active');
   const isStandings = tab.dataset.tab === 'standings';
-  $('#standings-wrap').hidden = !isStandings;
-  $('#results-wrap').hidden = isStandings;
-  if (!isStandings) {
+  document.querySelectorAll('#view-tables [data-tab-wrap]').forEach((w) => { w.hidden = w.dataset.tabWrap !== tab.dataset.tab; });
+  hooks.views[`tables:${tab.dataset.tab}`]?.();
+  if (!isStandings && tab.dataset.tab === 'results') {
     api(`/api/results?division_id=${state.currentDivision}`).then(({ results }) => {
       $('#results-wrap').innerHTML = results.length ? results.map((m) => `
         <div class="match-card" data-open="${m.id}" style="margin-bottom:8px">
