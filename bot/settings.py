@@ -16,6 +16,7 @@ DEFAULTS: dict[str, str] = {
     "max_open_exposure": str(config.MAX_OPEN_EXPOSURE),
     "max_legs": str(config.MAX_LEGS),
     "odds_margin_pct": str(config.ODDS_MARGIN_PCT),
+    "goals_base_lambda": "1.5",          # голов на команду до первых матчей (1.5 ≈ 3.0 за матч, как у оригинала)
     "transfer_deal_threshold": str(config.TRANSFER_DEAL_THRESHOLD),
     "transfer_commission_pct": str(config.TRANSFER_COMMISSION_PCT),
     "free_agent_k": str(config.FREE_AGENT_K),

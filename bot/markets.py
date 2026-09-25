@@ -1,10 +1,15 @@
-"""Кэфы из Elo + публичная маржа 5% (план 09).
+"""Кэфы: Elo + фактические голы турнира, публичная маржа 5% (план 09).
 
-Модель: разница Elo → ожидаемые голы команд (симметрично), матрица Пуассона
-0..8 голов → вероятности всех рынков (1х2, двойной шанс, тоталы 1.5/2.5/3.5, БТТС,
-ИТБ, AH, точный счёт). Кэф = fair/(1+маржа). Исход ноги и вероятность считаются по
-одной таблице _WINS — расчёт ставки не может разойтись с моделью.
-Пишется в markets + снапшот в odds_history (публичная история движения).
+Модель (как у оригинала «Логово» — ансамбль Elo и Пуассона по голам):
+1. Средний тотал лиги: старт — goals_base_lambda (1.5 гола на команду ≈ 3.0 за матч, как
+   заложено в линии оригинала: в FIFA голов больше, чем в футболе), дальше смещается к
+   фактическому среднему турнира.
+2. Elo-λ: база лиги × 10^(±разница Elo/800).
+3. Голы клубов: атака × оборона соперника относительно среднего лиги (сглажено к среднему).
+4. λ = смесь Elo и голов, вес голов растёт до 70% к 10 матчам клубов.
+5. Матрица Пуассона 0..8 → вероятности всех рынков; кэф = 1/p/(1+маржа), не ниже 1.01.
+Исход ноги и вероятность считаются по одной таблице _WINS — расчёт ставки не может
+разойтись с моделью. Пишется в markets + снапшот в odds_history (история движения).
 """
 import math
 
@@ -13,13 +18,22 @@ import elo as elo_engine
 import settings as appsettings
 
 MAX_GOALS = 8          # глубина пуассоновской матрицы
-BASE_LAMBDA = 1.35     # базовые ожидаемые голы команды при равных Elo
+BASE_LAMBDA = 1.5      # голов на команду при равных силах до первых матчей (≈3.0 за матч, как у оригинала)
+LEAGUE_PRIOR_GAMES = 20   # после стольких матчей турнира его фактическое среднее весит 50%
+TEAM_PRIOR_GAMES = 3      # сглаживание голов клуба к среднему лиги (мало матчей — шум)
+EMP_FULL_GAMES = 10       # к стольким матчам клубов голы весят EMP_MAX_WEIGHT
+EMP_MAX_WEIGHT = 0.7
 
 
-def lambdas(elo_home: float, elo_away: float) -> tuple[float, float]:
+def base_lambda() -> float:
+    return appsettings.setting_float("goals_base_lambda", BASE_LAMBDA)
+
+
+def lambdas(elo_home: float, elo_away: float, base: float | None = None) -> tuple[float, float]:
+    base = base_lambda() if base is None else base
     diff = (elo_home - elo_away) / 400.0
-    lh = BASE_LAMBDA * (10 ** (diff * 0.5))
-    la = BASE_LAMBDA * (10 ** (-diff * 0.5))
+    lh = base * (10 ** (diff * 0.5))
+    la = base * (10 ** (-diff * 0.5))
     return max(0.2, min(lh, 4.5)), max(0.2, min(la, 4.5))
 
 
@@ -68,7 +82,7 @@ MARKET_LABELS = {
     "ah_h15": "AH хоз -1.5", "ah_a15": "AH гост +1.5",
     # расширение линии: двойной шанс, другие тоталы, «забьёт», точный счёт
     "dc_1x": "1X", "dc_12": "12", "dc_x2": "X2",
-    "tb15": "ТБ 1.5", "tm15": "ТМ 1.5", "tb35": "ТБ 3.5", "tm35": "ТМ 3.5",
+    "tb15": "ТБ 1.5", "tm15": "ТМ 1.5", "tb35": "ТБ 3.5", "tm35": "ТМ 3.5", "tb45": "ТБ 4.5", "tm45": "ТМ 4.5",
     "itb_h05": "Хозяева забьют", "itb_a05": "Гости забьют",
 }
 EXACT_SCORES = [(1, 0), (2, 0), (2, 1), (3, 0), (3, 1), (3, 2), (0, 0), (1, 1), (2, 2),
@@ -96,6 +110,8 @@ _WINS = {
     "tm15": lambda h, a: h + a < 1.5,
     "tb35": lambda h, a: h + a > 3.5,
     "tm35": lambda h, a: h + a < 3.5,
+    "tb45": lambda h, a: h + a > 4.5,
+    "tm45": lambda h, a: h + a < 4.5,
     "itb_h05": lambda h, a: h > 0,
     "itb_a05": lambda h, a: a > 0,
 }
@@ -123,7 +139,7 @@ def market_probs_from_lambdas(lh: float, la: float) -> dict[str, float]:
 
 
 def market_probs(elo_home: float, elo_away: float) -> dict[str, float]:
-    """Код рынка → честная вероятность (без маржи) по Elo."""
+    """Код рынка → честная вероятность (без маржи) только по Elo."""
     return market_probs_from_lambdas(*lambdas(elo_home, elo_away))
 
 
@@ -140,14 +156,14 @@ def compute_odds(elo_home: float, elo_away: float) -> dict[str, float]:
 
 
 def explain(elo_home: float, elo_away: float) -> dict:
-    """«Как получен кэф»: все промежуточные числа формулы для экрана матча."""
+    """Кэфы только по Elo (без голов) — для проверок формулы."""
     lh, la = lambdas(elo_home, elo_away)
     margin = appsettings.setting_float("odds_margin_pct", 5) / 100.0
     probs = market_probs_from_lambdas(lh, la)
     return {
         "elo_home": round(elo_home), "elo_away": round(elo_away),
         "elo_diff": round(elo_home - elo_away),
-        "base_lambda": BASE_LAMBDA,
+        "base_lambda": base_lambda(),
         "lambda_home": round(lh, 3), "lambda_away": round(la, 3),
         "margin_pct": round(margin * 100, 2),
         "markets": {code: {"prob": round(probs[code], 4),
@@ -156,17 +172,75 @@ def explain(elo_home: float, elo_away: float) -> dict:
     }
 
 
+# ===== модель матча: Elo + голы турнира =====
+
+def league_goals(c, tournament_id) -> dict:
+    """Средние голы команды за матч в турнире, сглаженные к стартовому значению."""
+    r = c.execute("SELECT COUNT(*) n, COALESCE(SUM(score1 + score2), 0) g FROM matches "
+                  "WHERE tournament_id=? AND status='confirmed' AND score1 IS NOT NULL", (tournament_id,)).fetchone()
+    n, g = int(r["n"] or 0), int(r["g"] or 0)
+    prior = base_lambda()
+    base = (prior * LEAGUE_PRIOR_GAMES + g / 2) / (LEAGUE_PRIOR_GAMES + n)
+    return {"matches": n, "avg_total": round(g / n, 2) if n else None, "prior": prior, "base": base}
+
+
+def _team_goals(c, club_id, tournament_id) -> tuple[int, int, int]:
+    r = c.execute(
+        "SELECT COUNT(*) n, "
+        "COALESCE(SUM(CASE WHEN home_club_id=? THEN score1 ELSE score2 END), 0) gf, "
+        "COALESCE(SUM(CASE WHEN home_club_id=? THEN score2 ELSE score1 END), 0) ga "
+        "FROM matches WHERE tournament_id=? AND status='confirmed' AND score1 IS NOT NULL "
+        "AND (home_club_id=? OR away_club_id=?)",
+        (club_id, club_id, tournament_id, club_id, club_id)).fetchone()
+    return int(r["n"] or 0), int(r["gf"] or 0), int(r["ga"] or 0)
+
+
+def _elo(c, club_id) -> float:
+    r = c.execute("SELECT elo FROM clubs WHERE id=?", (club_id,)).fetchone()
+    return r["elo"] if r and r["elo"] is not None else 1000
+
+
+def match_lambdas(c, m: dict) -> dict:
+    """Все шаги модели для матча (для кэфов, кэшаута и «как получен кэф»)."""
+    lg = league_goals(c, m["tournament_id"])
+    base = lg["base"]
+    eh, ea = _elo(c, m["home_club_id"]), _elo(c, m["away_club_id"])
+    lh_elo, la_elo = lambdas(eh, ea, base)
+    teams = {}
+    for side, cid in (("home", m["home_club_id"]), ("away", m["away_club_id"])):
+        n, gf, ga = _team_goals(c, cid, m["tournament_id"])
+        # сглаживание: TEAM_PRIOR_GAMES «средних» матчей добавлены к фактическим
+        att = (gf + base * TEAM_PRIOR_GAMES) / (n + TEAM_PRIOR_GAMES) / base
+        dfn = (ga + base * TEAM_PRIOR_GAMES) / (n + TEAM_PRIOR_GAMES) / base
+        teams[side] = {"games": n, "gf": gf, "ga": ga, "attack": round(att, 3), "defense": round(dfn, 3)}
+    lh_goals = base * teams["home"]["attack"] * teams["away"]["defense"]
+    la_goals = base * teams["away"]["attack"] * teams["home"]["defense"]
+    games = min(teams["home"]["games"], teams["away"]["games"])
+    w = EMP_MAX_WEIGHT * min(games, EMP_FULL_GAMES) / EMP_FULL_GAMES
+    lh = max(0.2, min(4.5, (1 - w) * lh_elo + w * lh_goals))
+    la = max(0.2, min(4.5, (1 - w) * la_elo + w * la_goals))
+    return {"league": {**lg, "base": round(base, 3)}, "elo_home": round(eh), "elo_away": round(ea),
+            "lambda_home_elo": round(lh_elo, 3), "lambda_away_elo": round(la_elo, 3),
+            "teams": teams, "lambda_home_goals": round(lh_goals, 3), "lambda_away_goals": round(la_goals, 3),
+            "games": games, "weight": round(w, 2), "lambda_home": lh, "lambda_away": la}
+
+
+def match_probs(c, m: dict) -> dict[str, float]:
+    lam = match_lambdas(c, m)
+    return market_probs_from_lambdas(lam["lambda_home"], lam["lambda_away"])
+
+
 def generate_markets(match_id: int) -> int:
-    """Сгенерить/обновить markets для матча (по Elo клубов). → число рынков."""
+    """Сгенерить/обновить markets для матча по модели Elo + голы. → число рынков."""
     c = appdb.db()
     m = c.execute("SELECT * FROM matches WHERE id=?", (match_id,)).fetchone()
     if not m or m["home_club_id"] is None or m["away_club_id"] is None:
         c.close()
         return 0
-    elo_h = c.execute("SELECT elo FROM clubs WHERE id=?", (m["home_club_id"],)).fetchone()
-    elo_a = c.execute("SELECT elo FROM clubs WHERE id=?", (m["away_club_id"],)).fetchone()
+    probs = match_probs(c, dict(m))
     c.close()
-    odds = compute_odds(elo_h["elo"] if elo_h else 1000, elo_a["elo"] if elo_a else 1000)
+    margin = appsettings.setting_float("odds_margin_pct", 5) / 100.0
+    odds = {code: price(probs[code], margin) for code in MARKET_LABELS}
     c = appdb.db()
     n = 0
     for code, odd in odds.items():
@@ -193,6 +267,18 @@ def generate_markets(match_id: int) -> int:
     c.commit()
     c.close()
     return n
+
+
+def refresh_open(tournament_id: int) -> int:
+    """После каждого результата: пересчитать кэфы всех ещё открытых матчей турнира
+    (открытые туры лиги, pending-игры кубка). Уже принятые ставки не меняются."""
+    c = appdb.db()
+    rows = [dict(r) for r in c.execute(
+        "SELECT m.id FROM matches m LEFT JOIN tours t ON t.tournament_id=m.tournament_id "
+        "AND t.tour_number=m.tour_number WHERE m.tournament_id=? AND m.status='pending' "
+        "AND (m.tour_number IS NULL OR t.status='open')", (tournament_id,)).fetchall()]
+    c.close()
+    return sum(generate_markets(r["id"]) for r in rows)
 
 
 def refresh_tour(tournament_id: int, tour_number: int | None = None) -> int:

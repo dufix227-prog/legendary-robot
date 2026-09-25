@@ -137,20 +137,32 @@ async function openExplain(matchId) {
   const rows = e.markets.map((k) => `<tr class="${k.value ? 'is-value' : ''}">
       <td>${esc(k.label)}${k.value ? ' 💎' : ''}</td><td>${k.prob != null ? pct(k.prob) : '—'}</td>
       <td>${k.fair_odds != null ? odds(k.fair_odds) : '—'}</td><td><b>${odds(k.odds)}</b></td></tr>`).join('');
-  const mdl = e.model;
+  const lg = e.league, th = e.teams.home, ta = e.teams.away;
+  const n2 = (v) => Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+  const games = (n) => {
+    const d = n % 10, dd = n % 100;
+    return `${n} ${d === 1 && dd !== 11 ? 'матч' : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? 'матча' : 'матчей'}`;
+  };
   openSheet('Как получен кэф', `
     <div class="ex-steps">
-      <div class="ex-step"><b>1. Сила клубов (Elo)</b>
-        <div>${esc(e.home)}: <b>${e.elo_home}</b> · ${esc(e.away)}: <b>${e.elo_away}</b> · разница ${signed(e.elo_diff)}</div></div>
-      <div class="ex-step"><b>2. Ожидаемые голы</b>
-        <div>λ = ${e.base_lambda} × 10<sup>±разница/800</sup> → ${esc(e.home)} <b>${e.lambda_home}</b>, ${esc(e.away)} <b>${e.lambda_away}</b></div></div>
-      <div class="ex-step"><b>3. Вероятности</b>
-        <div>Пуассон: вероятность каждого счёта 0:0…8:8, из них складываются все рынки.</div></div>
-      <div class="ex-step"><b>4. Маржа ${e.margin_pct}%</b>
-        <div>кэф = 1 / вероятность / (1 + ${e.margin_pct / 100}), не ниже 1.01.</div></div>
+      <div class="ex-step"><b>1. Сколько голов в лиге</b>
+        <div>Старт — ${n2(lg.prior * 2)} гола за матч (в FIFA голов больше, чем в футболе).
+        ${lg.matches ? `Сыграно ${games(lg.matches)}, в среднем ${n2(lg.avg_total)} гола → база <b>${n2(lg.base * 2)}</b> за матч.` : 'Матчей ещё нет — берём старт.'}</div></div>
+      <div class="ex-step"><b>2. Сила клубов (Elo)</b>
+        <div>${esc(e.home)} <b>${e.elo_home}</b> · ${esc(e.away)} <b>${e.elo_away}</b> (${signed(e.elo_diff)})
+        → ожидаемые голы ${n2(e.lambda_home_elo)} : ${n2(e.lambda_away_elo)}</div></div>
+      <div class="ex-step"><b>3. Реальные голы клубов</b>
+        <div>${esc(e.home)}: ${games(th.games)}, забито ${th.gf}, пропущено ${th.ga} (атака ×${n2(th.attack)}, оборона ×${n2(th.defense)}).<br>
+        ${esc(e.away)}: ${games(ta.games)}, забито ${ta.gf}, пропущено ${ta.ga} (атака ×${n2(ta.attack)}, оборона ×${n2(ta.defense)}).<br>
+        → ожидаемые голы ${n2(e.lambda_home_goals)} : ${n2(e.lambda_away_goals)}</div></div>
+      <div class="ex-step"><b>4. Смесь</b>
+        <div>Голы весят ${Math.round(e.weight * 100)}% (растёт до 70% к 10 матчам), Elo — остальное →
+        <b>${n2(e.lambda_home)} : ${n2(e.lambda_away)}</b></div></div>
+      <div class="ex-step"><b>5. Шансы и кэф</b>
+        <div>Пуассон: вероятность каждого счёта 0:0…8:8, из них складываются все рынки.
+        Кэф = 1 / шанс / (1 + ${e.margin_pct / 100}), не ниже 1.01. После каждого сыгранного матча линия пересчитывается.</div></div>
       <div class="ex-step value"><b>💎 Value</b>
-        <div>Вторая модель — фактические голы клубов в турнире (сыграно матчей: ${mdl.games}, вес ${Math.round(mdl.weight * 100)}%):
-        λ ${mdl.lambda_home} / ${mdl.lambda_away}. Если её вероятность выше заложенной в кэф на ${e.value_edge_pp}+ п.п., кэф подсвечен.</div></div>
+        <div>Подсвечивается, только если кэф в линии отстал от модели на ${e.value_edge_pp}+ п.п. — бывает редко.</div></div>
     </div>
     <table class="ex-table"><tr><th>Рынок</th><th>Шанс</th><th>Честный</th><th>Кэф</th></tr>${rows}</table>`);
 }

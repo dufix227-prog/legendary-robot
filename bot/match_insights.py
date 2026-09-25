@@ -1,15 +1,13 @@
 """Аналитика матча: H2H, форма и статы клубов, подсказки, «как получен кэф», value.
 
-Value: вторая модель — ожидаемые голы по фактической результативности клубов в турнире,
-смешанная с Elo-λ по числу сыгранных матчей. Рынок «выгодный», если её вероятность выше
-вероятности, заложенной в кэф (1/кэф, с маржой), на value_edge_pp п.п.
+Кэфы считаются моделью Elo + голы турнира (markets.match_lambdas) и пересчитываются после
+каждого результата. Value (💎) — кэф в линии отстал от текущей модели больше чем на
+value_edge_pp п.п. (например, линию не успели обновить) — поэтому подсветка редкая.
 """
 import db as appdb
 import markets as markets_engine
 import settings as appsettings
 
-EMP_FULL_WEIGHT_GAMES = 10   # столько матчей — и фактическая результативность весит 70%
-EMP_MAX_WEIGHT = 0.7
 
 
 def _club(c, cid):
@@ -107,26 +105,15 @@ def _streak_text(name: str, rec: list[dict]) -> list[str]:
 
 
 def model_lambdas(c, m: dict) -> dict:
-    """Elo-λ, фактические λ по голам в турнире и их смесь (для value)."""
-    home, away = _club(c, m["home_club_id"]), _club(c, m["away_club_id"])
-    lh_elo, la_elo = markets_engine.lambdas(home["elo"], away["elo"])
-    sh = club_stats(c, home["id"], m["tournament_id"])
-    sa = club_stats(c, away["id"], m["tournament_id"])
-    games = min(sh["games"], sa["games"])
-    w = EMP_MAX_WEIGHT * min(games, EMP_FULL_WEIGHT_GAMES) / EMP_FULL_WEIGHT_GAMES
-    lh_emp = (sh["gf_avg"] + sa["ga_avg"]) / 2 if games else lh_elo
-    la_emp = (sa["gf_avg"] + sh["ga_avg"]) / 2 if games else la_elo
-    lh = max(0.2, min(4.5, (1 - w) * lh_elo + w * lh_emp))
-    la = max(0.2, min(4.5, (1 - w) * la_elo + w * la_emp))
-    return {"games": games, "weight": round(w, 2), "lambda_home": round(lh, 3), "lambda_away": round(la, 3),
-            "lambda_home_emp": round(lh_emp, 3), "lambda_away_emp": round(la_emp, 3)}
+    """Шаги модели кэфов (Elo + голы) — та же функция, что строит линию."""
+    return markets_engine.match_lambdas(c, m)
 
 
 def value_flags(c, m: dict, mkts: list[dict]) -> dict[str, dict]:
     """Код рынка → {model_prob, implied_prob, edge_pp} для рынков с перевесом модели."""
     if m["status"] != "pending" or m["home_club_id"] is None or m["away_club_id"] is None:
         return {}
-    lam = model_lambdas(c, m)
+    lam = markets_engine.match_lambdas(c, m)
     if lam["games"] < appsettings.setting_int("value_min_games", 3):
         return {}
     probs = markets_engine.market_probs_from_lambdas(lam["lambda_home"], lam["lambda_away"])
@@ -188,19 +175,27 @@ def explain(match_id: int) -> dict:
     try:
         m = _match(c, match_id)
         home, away = _club(c, m["home_club_id"]), _club(c, m["away_club_id"])
-        base = markets_engine.explain(home["elo"], away["elo"])
+        lam = markets_engine.match_lambdas(c, m)
+        probs = markets_engine.market_probs_from_lambdas(lam["lambda_home"], lam["lambda_away"])
+        margin = appsettings.setting_float("odds_margin_pct", 5) / 100.0
         mk = _markets(c, match_id)
         value = value_flags(c, m, mk)
         rows = []
         for k in mk:
-            e = base["markets"].get(k["code"])
+            p = probs.get(k["code"])
             rows.append({"code": k["code"], "label": k["label"], "odds": k["odds"],
-                         "prob": round(e["prob"] * 100, 1) if e else None,
-                         "fair_odds": e["fair_odds"] if e else None,
+                         "prob": round(p * 100, 1) if p is not None else None,
+                         "fair_odds": round(1 / max(p, 0.01), 2) if p is not None else None,
                          "value": value.get(k["code"])})
         return {"match_id": match_id, "home": home["name"], "away": away["name"],
-                **{k: v for k, v in base.items() if k != "markets"},
-                "model": model_lambdas(c, m), "markets": rows,
+                "elo_home": lam["elo_home"], "elo_away": lam["elo_away"],
+                "elo_diff": lam["elo_home"] - lam["elo_away"],
+                "league": lam["league"], "teams": lam["teams"],
+                "lambda_home_elo": lam["lambda_home_elo"], "lambda_away_elo": lam["lambda_away_elo"],
+                "lambda_home_goals": lam["lambda_home_goals"], "lambda_away_goals": lam["lambda_away_goals"],
+                "weight": lam["weight"], "games": lam["games"],
+                "lambda_home": round(lam["lambda_home"], 3), "lambda_away": round(lam["lambda_away"], 3),
+                "margin_pct": round(margin * 100, 2), "markets": rows,
                 "value_edge_pp": appsettings.setting_float("value_edge_pp", 5)}
     finally:
         c.close()

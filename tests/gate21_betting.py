@@ -1,4 +1,4 @@
-"""ГЕЙТ 21: расширенная линия (35 рынков, расчёт = модель), кэшаут (квота, смена суммы,
+"""ГЕЙТ 21: расширенная линия (37 рынков, расчёт = модель Elo + голы), кэшаут (квота, смена суммы,
 закрытие по локу тура, без двойной выплаты), черновики купонов, статистика каппера
 (ROI/проходимость/ср. кэф), рейтинги по сезону и дивизиону, H2H/аналитика, «как получен кэф», value."""
 import asyncio
@@ -70,7 +70,7 @@ mk = lambda mid, code: {"match_id": mid, "market_code": code}  # noqa: E731
 # ===== модель: вероятности и расчёт из одной таблицы =====
 db.init_db()
 probs = markets.market_probs(1100, 950)
-check("35 рынков в модели", len(markets.MARKET_LABELS) == 35 and set(probs) == set(markets.MARKET_LABELS),
+check("37 рынков в модели", len(markets.MARKET_LABELS) == 37 and set(probs) == set(markets.MARKET_LABELS),
       str(len(markets.MARKET_LABELS)))
 check("1X2 в сумме = 1", abs(probs["1x2_p1"] + probs["1x2_x"] + probs["1x2_p2"] - 1) < 1e-9)
 check("двойной шанс = сумма исходов", abs(probs["dc_1x"] - probs["1x2_p1"] - probs["1x2_x"]) < 1e-9)
@@ -99,8 +99,10 @@ for d, names in zip(divs, (["Аякс", "Милан", "Порту", "Бенфи�
     league.generate_league_calendar(tid, d["id"])
 markets.refresh_tour(tid, 1)
 t1 = league.tour_matches(tid, 1)
-check("линия тура: у матча 35 рынков",
-      q1("SELECT COUNT(*) n FROM markets WHERE match_id=?", (t1[0]["id"],))["n"] == 35)
+check("линия тура: у матча 37 рынков",
+      q1("SELECT COUNT(*) n FROM markets WHERE match_id=?", (t1[0]["id"],))["n"] == 37)
+check("до матчей база = 1.5 гола на команду (≈3.0 за матч, как у оригинала)",
+      abs(sum(markets.lambdas(1000, 1000)) - 3.0) < 1e-9)
 div_of = lambda m: divs[0]["id"] if q1("SELECT division_id FROM clubs WHERE id=?", (m["home_club_id"],))["division_id"] == divs[0]["id"] else divs[1]["id"]  # noqa: E731
 top = [m for m in t1 if div_of(m) == divs[0]["id"]]
 low = [m for m in t1 if div_of(m) == divs[1]["id"]]
@@ -211,8 +213,10 @@ ins = match_insights.insights(mA)
 check("H2H: 1 встреча, форма и статы", ins["h2h"]["total"] == 1 and ins["home"]["recent"][0]["result"] == "W"
       and ins["home"]["stats"]["games"] == 1, str(ins["h2h"]))
 exp = match_insights.explain(mB)
-check("explain по матчу: Elo клубов после тура и все рынки", len(exp["markets"]) == 35 and exp["elo_home"] > 0)
-# value: сыграем тур 2 и 3 так, чтобы у «Аякса» был огромный тотал — модель по голам уйдёт выше Elo
+check("explain по матчу: Elo клубов после тура и все рынки", len(exp["markets"]) == 37 and exp["elo_home"] > 0)
+# голы в кэфах: туры 2–3 по 5:4 — линия сама поднимает тоталы (раньше это ловила только 💎)
+elo_only = markets.compute_odds(q1("SELECT elo FROM clubs WHERE id=?", (q1("SELECT home_club_id h FROM matches WHERE id=?", (mB,))["h"],))["elo"],
+                                q1("SELECT elo FROM clubs WHERE id=?", (q1("SELECT away_club_id a FROM matches WHERE id=?", (mB,))["a"],))["elo"])
 for tour in (2, 3):
     markets.refresh_tour(tid, tour)
     for m in league.tour_matches(tid, tour):
@@ -223,10 +227,21 @@ c.execute("UPDATE tours SET status='open' WHERE tournament_id=? AND tour_number=
 c.commit()
 c.close()
 markets.generate_markets(mB)
+lg = markets.league_goals(db.db(), tid)
+check("база лиги сдвинулась к фактическим голам", lg["avg_total"] > 6 and lg["base"] * 2 > 3.5, str(lg))
+check("ТБ 3.5 подешевел по голам, ТМ 3.5 подорожал",
+      odds_of(mB, "tb35") < elo_only["tb35"] and odds_of(mB, "tm35") > elo_only["tm35"],
+      f"{odds_of(mB, 'tb35')} vs {elo_only['tb35']}")
 appsettings.set_setting("value_min_games", "2")
+check("свежая линия — без 💎 (кэфы уже учитывают голы)",
+      not [p for p in match_insights.value_radar(100) if p["match_id"] == mB])
+# линия отстала (например, её не пересчитали) → 💎 появляется
+c = db.db()
+c.execute("UPDATE markets SET odds=? WHERE match_id=? AND code='tb35'", (elo_only["tb35"], mB))
+c.commit()
+c.close()
 radar = match_insights.value_radar()
-check("value: ТБ на результативных клубах", any(p["match_id"] == mB and p["market_code"] in ("tb25", "tb35", "btts_yes")
-                                                for p in radar), str(radar[:3]))
+check("устаревший кэф → 💎", any(p["match_id"] == mB and p["market_code"] == "tb35" for p in radar), str(radar[:3]))
 check("value: перевес ≥ порога", all(p["edge_pp"] >= 5 for p in radar))
 appsettings.set_setting("value_min_games", "50")
 check("value: мало матчей → без подсветки", match_insights.value_radar() == [])
