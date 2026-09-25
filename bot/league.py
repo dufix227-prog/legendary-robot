@@ -192,6 +192,12 @@ def generate_league_calendar(tournament_id: int, division_id: int) -> int:
     )
     c.commit()
     c.close()
+    # тур 1 открывается сразу — без кэфов линия пустая, пока админ не обновит их руками
+    try:
+        import markets as markets_engine
+        markets_engine.refresh_tour(tournament_id, 1)
+    except Exception:
+        log.exception("кэфы тура 1 не сгенерированы (турнир %s)", tournament_id)
     return total
 
 

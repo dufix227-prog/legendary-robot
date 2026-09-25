@@ -110,16 +110,17 @@ if m is None:  # пара A–B может быть в другом туре —
 home, away = m["home_club_id"], m["away_club_id"]
 bh, ba = budget(home), budget(away)
 results.finalize_match(m["id"], 2, 1, None, None, [], actor="manual")
-spons = {A: ("balanced",), B: ("risky",)}
-exp_home = ce.stadium_income(1, "W") + (300_000 + 700_000 if home == A else 1_500_000)
-exp_away = (300_000 if away == A else 0)
+S = ce.SPONSORS
+spon = {A: S["balanced"], B: S["risky"]}
+exp_home = ce.stadium_income(1, "W") + spon[home]["match"] + spon[home]["win"]
+exp_away = spon[away]["match"]
 check("хозяева: стадион (победа) + спонсор", budget(home) - bh == exp_home, f"{budget(home) - bh} vs {exp_home}")
 check("гости: спонсор за поражение (без стадиона)", budget(away) - ba == exp_away, f"{budget(away) - ba} vs {exp_away}")
 results.finalize_match(m["id"], 2, 1, None, None, [], actor="manual")
 check("повторная финализация — без задвоения", budget(home) - bh == exp_home)
 results.finalize_match(m["id"], 0, 0, None, None, [], actor="manual")
-exp_home0 = ce.stadium_income(1, "D") + (300_000 + 250_000 if home == A else 300_000)
-exp_away0 = (300_000 + 250_000 if away == A else 300_000)
+exp_home0 = ce.stadium_income(1, "D") + spon[home]["match"] + spon[home]["draw"]
+exp_away0 = spon[away]["match"] + spon[away]["draw"]
 check("правка счёта пересчитывает доходы", budget(home) - bh == exp_home0 and budget(away) - ba == exp_away0,
       f"{budget(home) - bh}/{budget(away) - ba}")
 check("журнал доходов: по записи на клуб и вид",

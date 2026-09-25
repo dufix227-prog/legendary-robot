@@ -50,7 +50,16 @@ _psycopg2 = None
 _RealDictCursor = None
 if IS_POSTGRES:  # pragma: no cover - depends on env
     import psycopg2 as _psycopg2  # type: ignore
+    import psycopg2.extensions as _pg_ext  # type: ignore
     from psycopg2.extras import RealDictCursor as _RealDictCursor  # type: ignore
+
+    def _numeric(value, cur):
+        # SUM()/AVG() over BIGINT return NUMERIC → Decimal, which json can't encode; SQLite gives int/float
+        if value is None:
+            return None
+        return int(value) if "." not in value else float(value)
+
+    _pg_ext.register_type(_pg_ext.new_type(_pg_ext.DECIMAL.values, "KURILKA_NUMERIC", _numeric))
 
 
 # ── SQL translation ──────────────────────────────────────────────────────────
@@ -60,10 +69,7 @@ def _qmark_to_pct(sql: str) -> str:
     Replace ``?`` placeholders with ``%s`` while leaving any ``?`` characters
     that appear inside SQL string literals alone.
 
-    Note: we deliberately do NOT escape literal ``%`` characters to ``%%``.
-    All SQL in this codebase uses ``?`` placeholders and never embeds raw
-    ``%`` chars (LIKE patterns are passed as parameters). If you add SQL
-    with a literal ``%`` someday, escape it yourself in the source string.
+    Literal ``%`` is escaped to ``%%`` by ``translate_sql`` before this runs.
     """
     out: list[str] = []
     i = 0
@@ -102,12 +108,46 @@ def _looks_like_ddl(sql: str) -> bool:
     return bool(_RE_DDL.match(sql or ""))
 
 
+# All time columns are TEXT ('YYYY-MM-DD HH:MM:SS', UTC) like SQLite's datetime('now'):
+# keep the same text on Postgres so COALESCE(text_col, now) and string comparisons work.
+PG_NOW_TEXT = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')"
+
 _RE_INSERT_OR_IGNORE = re.compile(r"\bINSERT\s+OR\s+IGNORE\s+INTO\b", re.IGNORECASE)
 _RE_DATETIME_NOW = re.compile(r"datetime\(\s*'now'\s*\)", re.IGNORECASE)
 _RE_DATETIME_OFFSET = re.compile(
-    r"datetime\(\s*'now'\s*,\s*'\+(\d+)\s+(hours|minutes|days)'\s*\)",
+    r"datetime\(\s*'now'\s*,\s*'([+-]\d+)\s+(hours|minutes|days|seconds)'\s*\)",
     re.IGNORECASE,
 )
+
+
+_RE_MINMAX = re.compile(r"\b(MAX|MIN)\s*\(", re.IGNORECASE)
+
+
+def _scalar_minmax(sql: str) -> str:
+    """SQLite scalar MAX(a, b)/MIN(a, b) → GREATEST/LEAST; aggregate MAX(x) stays as is."""
+    out, pos = [], 0
+    for m in _RE_MINMAX.finditer(sql):
+        if m.start() < pos:
+            continue
+        depth, i, top_comma = 1, m.end(), False
+        while i < len(sql) and depth:
+            ch = sql[i]
+            if ch in "'\"":
+                j = sql.find(ch, i + 1)
+                i = j if j != -1 else len(sql)
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif ch == "," and depth == 1:
+                top_comma = True
+            i += 1
+        if top_comma:
+            out.append(sql[pos:m.start()])
+            out.append("GREATEST(" if m.group(1).upper() == "MAX" else "LEAST(")
+            pos = m.end()
+    out.append(sql[pos:])
+    return "".join(out)
 
 
 def translate_sql(sql: str) -> str:
@@ -119,12 +159,16 @@ def translate_sql(sql: str) -> str:
     if has_or_ignore:
         sql = _RE_INSERT_OR_IGNORE.sub("INSERT INTO", sql)
 
-    sql = _RE_DATETIME_NOW.sub("CURRENT_TIMESTAMP", sql)
+    sql = _RE_DATETIME_NOW.sub(PG_NOW_TEXT, sql)
     sql = _RE_DATETIME_OFFSET.sub(
-        lambda m: f"(CURRENT_TIMESTAMP + INTERVAL '{m.group(1)} {m.group(2)}')",
+        lambda m: f"to_char((now() AT TIME ZONE 'UTC') + INTERVAL '{m.group(1)} {m.group(2)}', "
+                  f"'YYYY-MM-DD HH24:MI:SS')",
         sql,
     )
 
+    sql = _scalar_minmax(sql)
+    # literal % (LIKE '%x%') must be %% for psycopg2; execute() always passes a params tuple
+    sql = sql.replace("%", "%%")
     sql = _qmark_to_pct(sql)
 
     if has_or_ignore and "on conflict" not in sql.lower():
@@ -136,6 +180,8 @@ def translate_schema(ddl: str) -> str:
     """Translate CREATE TABLE / ALTER TABLE DDL between SQLite and Postgres."""
     if not IS_POSTGRES:
         return ddl
+    # datetime('now') first — otherwise the DATETIME type rule below turns it into TIMESTAMP('now')
+    ddl = _RE_DATETIME_NOW.sub(PG_NOW_TEXT, ddl)
     # Order matters: handle PRIMARY KEY forms first so we don't mangle "INTEGER".
     ddl = re.sub(
         r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b",
@@ -149,12 +195,19 @@ def translate_schema(ddl: str) -> str:
     ddl = re.sub(r"\bDATETIME\b", "TIMESTAMP", ddl, flags=re.IGNORECASE)
     ddl = re.sub(r"\bREAL\b", "DOUBLE PRECISION", ddl, flags=re.IGNORECASE)
     ddl = ddl.replace("__PK_AUTO__", "BIGSERIAL PRIMARY KEY")
-    # Postgres datetime() functions used in DEFAULT clauses.
-    ddl = _RE_DATETIME_NOW.sub("CURRENT_TIMESTAMP", ddl)
     return ddl
 
 
 # ── Cursor / Connection wrappers ─────────────────────────────────────────────
+
+
+class _Row(dict):
+    """Postgres row that also allows row[0], like sqlite3.Row."""
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
 
 
 class _CursorWrapper:
@@ -169,7 +222,10 @@ class _CursorWrapper:
         sql_t = translate_sql(sql)
         if _looks_like_ddl(sql_t):
             sql_t = translate_schema(sql_t)
-        if params is None or params == ():
+        if self._backend == "postgres":
+            # always a tuple: psycopg2 then unescapes the %% added by translate_sql
+            self._raw.execute(sql_t, tuple(params or ()))
+        elif params is None or params == ():
             self._raw.execute(sql_t)
         else:
             self._raw.execute(sql_t, tuple(params))
@@ -178,10 +234,12 @@ class _CursorWrapper:
         return self
 
     def fetchone(self):
-        return self._raw.fetchone()
+        row = self._raw.fetchone()
+        return _Row(row) if self._backend == "postgres" and row is not None else row
 
     def fetchall(self):
-        return self._raw.fetchall()
+        rows = self._raw.fetchall()
+        return [_Row(r) for r in rows] if self._backend == "postgres" else rows
 
     @property
     def rowcount(self) -> int:

@@ -150,5 +150,6 @@ check("штраф за неигранный: 2 клуба по 1М", len(fined) 
 
 print()
 print("GATE 5:", "OK" if not fails else f"ПРОВАЛЫ: {fails}")
-os.remove("/tmp/gate5.db")
+if os.path.exists("/tmp/gate5.db"):  # на Postgres файла нет
+    os.remove("/tmp/gate5.db")
 sys.exit(1 if fails else 0)

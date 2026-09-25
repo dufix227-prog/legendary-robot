@@ -90,5 +90,6 @@ c.close()
 
 print()
 print("GATE 9:", "OK" if not fails else f"ПРОВАЛЫ: {fails}")
-os.remove("/tmp/gate9.db")
+if os.path.exists("/tmp/gate9.db"):  # на Postgres файла нет
+    os.remove("/tmp/gate9.db")
 sys.exit(1 if fails else 0)

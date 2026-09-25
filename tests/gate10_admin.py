@@ -192,5 +192,6 @@ asyncio.run(_api_checks())
 
 print()
 print("GATE 10:", "OK" if not fails else f"ПРОВАЛЫ: {fails}")
-os.remove("/tmp/gate10.db")
+if os.path.exists("/tmp/gate10.db"):  # на Postgres файла нет
+    os.remove("/tmp/gate10.db")
 sys.exit(1 if fails else 0)

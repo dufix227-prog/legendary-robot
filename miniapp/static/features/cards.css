@@ -253,3 +253,11 @@
 .mk-btns .place-btn { flex: 1; margin-top: 0; }
 .mk-btns .lot-btn { flex: 0 0 auto; border-radius: 14px; padding: 0 16px; }
 .tr-card-link { width: 100%; margin: 0 0 10px; padding: 10px 12px; }
+
+/* ===== справочник: автокомплит имени ===== */
+.cf-dir { margin: -4px 0 8px; background: var(--bg3); border: 1px solid var(--line2); border-radius: 12px; overflow: hidden; }
+.cf-dir-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left;
+  padding: 8px 12px; border-top: 1px solid var(--line); color: var(--text); font-size: 13.5px; }
+.cf-dir-item:first-child { border-top: 0; }
+.cf-dir-item span { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.cf-dir-item:active { background: var(--bg4); }

@@ -23,7 +23,8 @@ venv/bin/python bot/main.py        # бот + http://127.0.0.1:9542/app
 Только мини-апп: `venv/bin/python -m miniapp.server`.
 `/scan` по ссылке Challenge Place (необязательно): `venv/bin/pip install -r bot/requirements-optional.txt
 && venv/bin/playwright install --with-deps chromium`.
-Тесты: `for t in tests/smoke.py tests/gate*.py; do venv/bin/python $t; done`.
+Тесты: `tests/run_all.sh` (SQLite) или `PG_URL=postgresql://user@host:5432 tests/run_all.sh` (Postgres).
+Справочник реальных игроков: `venv/bin/python bot/players_directory.py` (или кнопка в админке).
 
 ## Админы
 - **root** — Telegram ID в `ADMIN_IDS` (`bot/.env`). Свой ID покажет `/myid`. Root сразу админ

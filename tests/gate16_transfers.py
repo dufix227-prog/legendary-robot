@@ -321,5 +321,6 @@ async def run_api():
 
 asyncio.run(run_api())
 print("\nGATE 16:", "OK" if not fails else f"FAIL {fails}")
-os.remove("/tmp/gate16.db")
+if os.path.exists("/tmp/gate16.db"):  # на Postgres файла нет
+    os.remove("/tmp/gate16.db")
 sys.exit(1 if fails else 0)
