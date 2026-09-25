@@ -1,0 +1,38 @@
+/* ===== цвета клубов ===== */
+.match-card.club-colored { position: relative; overflow: hidden; }
+.match-card.club-colored::before, .match-card.club-colored::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 4px;
+}
+.match-card.club-colored::before { left: 0; background: var(--home-c); }
+.match-card.club-colored::after { right: 0; background: var(--away-c); }
+.kickoff { color: var(--text); font-weight: 800; }
+.club-colored-hero { background: linear-gradient(160deg, color-mix(in srgb, var(--c1) 38%, var(--bg2)) 0%,
+  var(--bg2) 60%, color-mix(in srgb, var(--c2) 22%, var(--bg2)) 100%); border-color: color-mix(in srgb, var(--c1) 50%, transparent); }
+.club-motto { margin-top: 8px; font-style: italic; color: var(--muted); font-weight: 700; font-size: 13px; }
+
+/* ===== время матча ===== */
+.kickoff-box { margin-top: 12px; text-align: center; font-size: 13.5px; font-weight: 700; }
+.kickoff-edit { display: flex; gap: 6px; justify-content: center; margin: 8px 0 4px; }
+.kickoff-edit input { background: var(--bg3); border: 1px solid var(--line2); color: var(--text); border-radius: 10px;
+  padding: 7px 9px; font: inherit; font-size: 13px; color-scheme: dark; }
+.kickoff-edit .chip { padding: 7px 11px; font-size: 12.5px; }
+
+/* ===== экономика ===== */
+.sponsor-list { display: flex; flex-direction: column; gap: 8px; }
+.sponsor-opt { display: flex; gap: 10px; justify-content: space-between; align-items: center; background: var(--bg3);
+  border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.sponsor-opt .chip { flex: 0 0 auto; }
+.sponsor-terms { font-size: 11.5px; color: var(--accent); font-weight: 700; margin-top: 3px; }
+.sponsor-cur { background: var(--bg3); border-radius: 12px; padding: 10px 12px; font-size: 13.5px; }
+.ledger-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line);
+  font-size: 13px; font-weight: 700; }
+.ledger-row small { display: block; color: var(--muted); font-size: 11px; font-weight: 600; }
+.ledger-row b { white-space: nowrap; }
+.cp-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.cp-grid label, .cp-wide { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.cp-wide { margin-top: 8px; }
+.cp-grid input, .cp-wide input { background: var(--bg3); border: 1px solid var(--line2); border-radius: 10px; color: var(--text);
+  padding: 8px 10px; font: inherit; font-size: 14px; min-width: 0; }
+.cp-grid input[type="color"] { padding: 2px; height: 38px; }
+.cp-actions { display: flex; gap: 8px; margin: 10px 0 6px; align-items: center; }
+.cp-actions .bonus-btn { flex: 1; }

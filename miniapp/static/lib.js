@@ -63,6 +63,11 @@ export function toast(text, ms = 2600) {
 }
 
 export function logoHtml(club, cls = '') {
+  // эмодзи-эмблема владельца важнее логотипа из каталога
+  if (club?.emblem) {
+    const bg = /^#[0-9a-f]{6}$/i.test(club.color1 || '') ? ` style="background:${club.color1}"` : '';
+    return `<span class="mc-fallback emblem ${cls}"${bg}>${esc(club.emblem)}</span>`;
+  }
   if (club?.logo) return `<img src="${esc(club.logo)}" alt="" class="${cls}">`;
   return `<span class="mc-fallback ${cls}">🛡️</span>`;
 }
@@ -105,6 +110,8 @@ export function fmtTime(s, local = false) {
    couponCards      — fn(container) после рендера купона (и пустого — container = #coupon-body)
    matchSheet       — fn(container, match) после рендера карточки матча (#match-detail)
    lineCards        — fn(matchCardEl, match) для каждой карточки матча в линии */
+export const actions = {};  // заполняет app.js: renderAll, renderCoupon, refreshWallet, showView…
+
 export const hooks = { views: {}, profileCards: [], clubCards: [], adminCards: [], couponCards: [], matchSheet: [], lineCards: [] };
 
 export function runHooks(list, ...args) {
