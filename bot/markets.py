@@ -1,7 +1,9 @@
 """Кэфы из Elo + публичная маржа 5% (план 09).
 
 Модель: разница Elo → ожидаемые голы команд (симметрично), матрица Пуассона
-0..8 голов → вероятности 1х2, тоталов, БТТС, ИТБ, AH. Кэф = fair/(1+маржа).
+0..8 голов → вероятности всех рынков (1х2, двойной шанс, тоталы 1.5/2.5/3.5, БТТС,
+ИТБ, AH, точный счёт). Кэф = fair/(1+маржа). Исход ноги и вероятность считаются по
+одной таблице _WINS — расчёт ставки не может разойтись с моделью.
 Пишется в markets + снапшот в odds_history (публичная история движения).
 """
 import math
@@ -64,25 +66,94 @@ MARKET_LABELS = {
     "btts_yes": "БТТС да", "btts_no": "БТТС нет",
     "itb_h15": "ИТБ хоз 1.5", "itb_a15": "ИТБ гост 1.5",
     "ah_h15": "AH хоз -1.5", "ah_a15": "AH гост +1.5",
+    # расширение линии: двойной шанс, другие тоталы, «забьёт», точный счёт
+    "dc_1x": "1X", "dc_12": "12", "dc_x2": "X2",
+    "tb15": "ТБ 1.5", "tm15": "ТМ 1.5", "tb35": "ТБ 3.5", "tm35": "ТМ 3.5",
+    "itb_h05": "Хозяева забьют", "itb_a05": "Гости забьют",
 }
-_BASE_PROBS = {
-    "1x2_p1": "p1", "1x2_x": "px", "1x2_p2": "p2",
-    "tb25": "tb25", "tm25": "tm25",
-    "btts_yes": "btts_yes", "btts_no": "btts_no",
-    "itb_h15": "itb_h15", "itb_a15": "itb_a15",
-    "ah_h15": "ah_h15", "ah_a15": "ah_a15",
+EXACT_SCORES = [(1, 0), (2, 0), (2, 1), (3, 0), (3, 1), (3, 2), (0, 0), (1, 1), (2, 2),
+                (0, 1), (0, 2), (1, 2), (0, 3), (1, 3), (2, 3)]
+for _h, _a in EXACT_SCORES:
+    MARKET_LABELS[f"cs_{_h}_{_a}"] = f"Счёт {_h}:{_a}"
+
+# исход ноги по счёту — одна таблица и для расчёта ставок, и для вероятностей
+_WINS = {
+    "1x2_p1": lambda h, a: h > a,
+    "1x2_x": lambda h, a: h == a,
+    "1x2_p2": lambda h, a: a > h,
+    "tb25": lambda h, a: h + a > 2.5,
+    "tm25": lambda h, a: h + a < 2.5,
+    "btts_yes": lambda h, a: h > 0 and a > 0,
+    "btts_no": lambda h, a: h == 0 or a == 0,
+    "itb_h15": lambda h, a: h > 1.5,
+    "itb_a15": lambda h, a: a > 1.5,
+    "ah_h15": lambda h, a: h - a >= 2,
+    "ah_a15": lambda h, a: a - h >= -1,   # +1.5: не проиграть в 2+ мяча
+    "dc_1x": lambda h, a: h >= a,
+    "dc_12": lambda h, a: h != a,
+    "dc_x2": lambda h, a: a >= h,
+    "tb15": lambda h, a: h + a > 1.5,
+    "tm15": lambda h, a: h + a < 1.5,
+    "tb35": lambda h, a: h + a > 3.5,
+    "tm35": lambda h, a: h + a < 3.5,
+    "itb_h05": lambda h, a: h > 0,
+    "itb_a05": lambda h, a: a > 0,
 }
+for _h, _a in EXACT_SCORES:
+    _WINS[f"cs_{_h}_{_a}"] = (lambda x, y: lambda h, a: h == x and a == y)(_h, _a)
+
+ODDS_FLOOR = 1.01
+
+
+def score_matrix(lh: float, la: float) -> list[list[float]]:
+    """P(хозяева i, гости j), i,j = 0..MAX_GOALS, нормированная (хвост за 8 голов раскидан пропорционально)."""
+    ph = [_pois(k, lh) for k in range(MAX_GOALS + 1)]
+    pa = [_pois(k, la) for k in range(MAX_GOALS + 1)]
+    mx = [[ph[i] * pa[j] for j in range(MAX_GOALS + 1)] for i in range(MAX_GOALS + 1)]
+    total = sum(map(sum, mx)) or 1.0
+    return [[v / total for v in row] for row in mx]
+
+
+def market_probs_from_lambdas(lh: float, la: float) -> dict[str, float]:
+    mx = score_matrix(lh, la)
+    out = {}
+    for code, won in _WINS.items():
+        out[code] = sum(mx[i][j] for i in range(MAX_GOALS + 1) for j in range(MAX_GOALS + 1) if won(i, j))
+    return out
+
+
+def market_probs(elo_home: float, elo_away: float) -> dict[str, float]:
+    """Код рынка → честная вероятность (без маржи) по Elo."""
+    return market_probs_from_lambdas(*lambdas(elo_home, elo_away))
+
+
+def price(p: float, margin: float) -> float:
+    p = max(0.01, min(0.97, p))
+    return max(ODDS_FLOOR, round(1.0 / p / (1 + margin), 2))
 
 
 def compute_odds(elo_home: float, elo_away: float) -> dict[str, float]:
     """Код рынка → кэф с маржой (маржа публичная, план 09)."""
-    probs = probabilities(elo_home, elo_away)
+    probs = market_probs(elo_home, elo_away)
     margin = appsettings.setting_float("odds_margin_pct", 5) / 100.0
-    out = {}
-    for code, prob_key in _BASE_PROBS.items():
-        p = max(0.01, min(0.97, probs[prob_key]))
-        out[code] = round(1.0 / p / (1 + margin), 2)
-    return out
+    return {code: price(probs[code], margin) for code in MARKET_LABELS}
+
+
+def explain(elo_home: float, elo_away: float) -> dict:
+    """«Как получен кэф»: все промежуточные числа формулы для экрана матча."""
+    lh, la = lambdas(elo_home, elo_away)
+    margin = appsettings.setting_float("odds_margin_pct", 5) / 100.0
+    probs = market_probs_from_lambdas(lh, la)
+    return {
+        "elo_home": round(elo_home), "elo_away": round(elo_away),
+        "elo_diff": round(elo_home - elo_away),
+        "base_lambda": BASE_LAMBDA,
+        "lambda_home": round(lh, 3), "lambda_away": round(la, 3),
+        "margin_pct": round(margin * 100, 2),
+        "markets": {code: {"prob": round(probs[code], 4),
+                           "fair_odds": round(1 / max(probs[code], 0.01), 2),
+                           "odds": price(probs[code], margin)} for code in MARKET_LABELS},
+    }
 
 
 def generate_markets(match_id: int) -> int:
@@ -178,28 +249,8 @@ def generate_tie_markets(match_id: int, tie_id: int) -> int:
 
 
 def resolve_leg(match_id: int, market_code: str, score1: int, score2: int) -> str:
-    """Исход ноги: won/lost (void не возникает на наших рынках при известном счёте)."""
-    h, a = score1, score2
-    if market_code == "1x2_p1":
-        return "won" if h > a else "lost"
-    if market_code == "1x2_x":
-        return "won" if h == a else "lost"
-    if market_code == "1x2_p2":
-        return "won" if a > h else "lost"
-    if market_code == "tb25":
-        return "won" if h + a > 2.5 else "lost"
-    if market_code == "tm25":
-        return "won" if h + a < 2.5 else "lost"
-    if market_code == "btts_yes":
-        return "won" if h > 0 and a > 0 else "lost"
-    if market_code == "btts_no":
-        return "won" if h == 0 or a == 0 else "lost"
-    if market_code == "itb_h15":
-        return "won" if h > 1.5 else "lost"
-    if market_code == "itb_a15":
-        return "won" if a > 1.5 else "lost"
-    if market_code == "ah_h15":
-        return "won" if h - a >= 2 else "lost"
-    if market_code == "ah_a15":
-        return "won" if a - h >= -1 else "lost"   # +1.5: не проиграть в 2+ мяча
-    return "void"
+    """Исход ноги: won/lost; неизвестный рынок → void."""
+    won = _WINS.get(market_code)
+    if won is None:
+        return "void"
+    return "won" if won(score1, score2) else "lost"

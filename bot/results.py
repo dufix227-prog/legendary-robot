@@ -207,6 +207,10 @@ def finalize_match(match_id: int, score1: int, score2: int,
         bets_engine.unsettle_for_match(c, match_id)
     if bets_engine:
         _unfreeze_bets(c, match_id)
+
+    # 7) доходы клубов: стадион + спонсор (пересчёт при правке счёта без задвоения)
+    import club_economy
+    club_economy.apply_match_income(c, match_id)
     c.commit()
     c.close()
 
@@ -217,7 +221,7 @@ def finalize_match(match_id: int, score1: int, score2: int,
             except Exception:
                 log.exception("settle_match упал на матче %s", mid)
 
-    # 7) кубок: серия решилась/переигралась → следующая стадия, пересборка пар, финал
+    # 8) кубок: серия решилась/переигралась → следующая стадия, пересборка пар, финал
     if m.get("tie_id"):
         try:
             import league

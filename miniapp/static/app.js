@@ -1,16 +1,20 @@
 /* KURILKA SIGARKI — SPA ядра: линия, таблицы, купон, кабинет, клуб. Валюта «дым». */
 
 import {
-  $, api, esc, fmt, fmtTime, formLetters, haptic, hooks, logoHtml, odds, runHooks, setBadge, showLockdown, state, tg, toast,
+  $, actions, api, esc, fmt, fmtTime, formLetters, haptic, hooks, logoHtml, odds, runHooks, setBadge, showLockdown, state, tg, toast,
 } from './lib.js';
 import './features/index.js';
 
+const EXACT_SCORES = ['1_0', '2_0', '2_1', '3_0', '3_1', '3_2', '0_0', '1_1', '2_2', '0_1', '0_2', '1_2', '0_3', '1_3', '2_3'];
 const MARKET_GROUPS = [
   ['Исход', ['1x2_p1', '1x2_x', '1x2_p2']],
-  ['Тотал', ['tb25', 'tm25']],
+  ['Двойной шанс', ['dc_1x', 'dc_12', 'dc_x2']],
+  ['Тотал', ['tb15', 'tm15', 'tb25', 'tm25', 'tb35', 'tm35']],
   ['Обе забьют', ['btts_yes', 'btts_no']],
+  ['Забьёт', ['itb_h05', 'itb_a05']],
   ['Индивидуальный тотал', ['itb_h15', 'itb_a15']],
   ['Фора', ['ah_h15', 'ah_a15']],
+  ['Точный счёт', EXACT_SCORES.map((s) => `cs_${s}`)],
   ['Серия', ['tie_2_0', 'tie_2_1', 'tie_1_2', 'tie_0_2']],
 ];
 
@@ -248,7 +252,7 @@ function renderProfile() {
         <div class="bet-history-item">
           <div><div>#${b.id} · ${b.bet_type === 'express' ? `Экспресс ×${b.legs}` : 'Ординар'} · ${fmt(b.amount)} × ${odds(b.total_odds)}</div>
           <div class="sub">${esc(b.legs_label || '')}</div></div>
-          <div class="bh-status ${esc(b.status)}">${({won: '+' + fmt(b.potential_win), lost: 'проигрыш', void: 'возврат', open: 'в игре'})[b.status] || esc(b.status)}</div>
+          <div class="bh-status ${esc(b.status)}">${({won: '+' + fmt(b.potential_win), lost: 'проигрыш', void: 'возврат', open: 'в игре', cashout: 'кэшаут +' + fmt(b.cashout_amount)})[b.status] || esc(b.status)}</div>
         </div>`).join('') : '<div class="empty-note">Ставок ещё нет.</div>');
     }).catch(() => {});
   }).catch((e) => { $('#profile-body').innerHTML = `<div class="empty-note">${esc(e.message)}</div>`; });
@@ -515,6 +519,9 @@ function renderAll() {
   renderCoupon();
   updateBetbar();
 }
+
+// для фич: перерисовка после внешней правки купона (черновики), баланс, переходы
+Object.assign(actions, { renderAll, renderCoupon, renderProfile, refreshWallet, refreshLine, showView, saveCoupon });
 
 /* ===== init ===== */
 

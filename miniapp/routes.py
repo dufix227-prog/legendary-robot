@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bot"))
 
 from aiohttp import web
 
+import club_economy  # noqa: E402
 import config  # noqa: E402
 import db as appdb  # noqa: E402
 import elo as elo_engine  # noqa: E402
@@ -49,6 +50,7 @@ def _club_public(club: dict | None) -> dict | None:
         "id": club["id"], "name": club["name"], "elo": club["elo"], "form": club["form"] or "",
         "logo": f"/assets/logos/{Path(logo).name}" if logo else None,
         "budget": club["budget"],
+        **club_economy.public_fields(club),
     }
 
 
@@ -66,6 +68,7 @@ def _match_public(c, m: dict) -> dict:
         "status": m["status"],
         "score_home": m["score1"], "score_away": m["score2"],
         "pens_home": m["pens1"], "pens_away": m["pens2"],
+        "scheduled_at": m.get("scheduled_at"),
         "home": home, "away": away,
         "markets": [{"code": k["code"], "label": k["label"], "odds": k["odds"]} for k in mkts],
     }

@@ -523,6 +523,7 @@ def user_predictions(user_row: dict, status: str | None = None, limit: int = 50)
             "id": b["id"], "bet_type": b["bet_type"], "amount": b["amount"],
             "total_odds": b["total_odds"], "potential_win": b["potential_win"],
             "status": b["status"], "legs": len(legs), "legs_label": " + ".join(labels[:5]),
+            "cashout_amount": b.get("cashout_amount"),
             "created_at": b["created_at"],
         })
     c.close()

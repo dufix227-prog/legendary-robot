@@ -4,4 +4,6 @@ import './transfers.js';
 import './cup.js';
 import './progress.js';
 import './leagues.js';
+import './betting.js';
+import './clubs.js';
 import './admin.js';
