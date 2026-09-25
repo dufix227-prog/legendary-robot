@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="/static/features/cards.css?v=1">
 <link rel="stylesheet" href="/static/features/betting.css?v=1">
 <link rel="stylesheet" href="/static/features/clubs.css?v=1">
+<link rel="stylesheet" href="/static/features/extras.css?v=1">
 </head>
 <body>
 <div id="app">
@@ -33,6 +34,7 @@
     <!-- ЛИНИЯ -->
     <section id="view-line" class="view active">
       <div class="section-title">Линия</div>
+      <div id="line-extras"></div>
       <div id="line-tours" class="chips"></div>
       <div id="line-matches" class="match-list"></div>
     </section>
@@ -43,10 +45,12 @@
       <div class="tabs" id="tabs-tables">
         <button class="tab active" data-tab="standings">Турнирная</button>
         <button class="tab" data-tab="results">Результаты</button>
+        <button class="tab" data-tab="scorers">Бомбардиры</button>
       </div>
       <div id="division-chips" class="chips"></div>
-      <div id="standings-wrap"></div>
-      <div id="results-wrap" hidden></div>
+      <div id="standings-wrap" data-tab-wrap="standings"></div>
+      <div id="results-wrap" data-tab-wrap="results" hidden></div>
+      <div id="scorers-wrap" data-tab-wrap="scorers" hidden></div>
     </section>
 
     <!-- КУПОН -->

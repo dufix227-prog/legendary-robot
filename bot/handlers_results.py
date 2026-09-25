@@ -331,8 +331,15 @@ async def _finalize_report(context, chat_id: int, reporter_tg: int, match_id: in
     pens = o.get("penalties") or {}
     summary = results.finalize_match(
         match_id, o["score_home"], o["score_away"], pens.get("home"), pens.get("away"),
-        o.get("goal_events") or [], actor="ocr",
+        o.get("goal_events") or [], actor="ocr", players=o.get("players") or [],
     )
+    try:
+        import league_stats
+        imgs = ud.get("report_images") or []
+        if imgs:
+            league_stats.save_screenshot(match_id, imgs[0])
+    except Exception:
+        log.exception("скрин матча %s не сохранён", match_id)
     c = appdb.db()
     for sha in ud.get("report_shas") or []:
         c.execute(

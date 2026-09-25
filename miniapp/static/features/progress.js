@@ -97,14 +97,14 @@ function hallLeaders(data) {
   const L = data.leaders || [];
   if (!L.length) return '<div class="empty-note">Пока никого нет.</div>';
   const podium = L.slice(0, 3).map((u, i) => `
-    <div class="hall-podium-item p${i + 1}${u.is_me ? ' me' : ''}">
+    <div class="hall-podium-item p${i + 1}${u.is_me ? ' me' : ''}" data-profile="${u.user_id}">
       <div class="hall-medal">${MEDALS[i]}</div>
       <div class="hall-pname">${esc(u.name)}</div>
       <div class="hall-pval">${fmt(u.value)} ${SMOKE}</div>
       ${u.team_name ? `<div class="hall-team">${esc(u.team_name)}</div>` : ''}
     </div>`).join('');
   const rows = L.slice(3).map((u) => `
-    <div class="hall-row${u.is_me ? ' me' : ''}">
+    <div class="hall-row${u.is_me ? ' me' : ''}" data-profile="${u.user_id}">
       <span class="hall-pos">#${u.position}</span>
       <span class="hall-name">${esc(u.name)}${u.team_name ? `<span class="sub"> · ${esc(u.team_name)}</span>` : ''}</span>
       <span class="hall-val">${fmt(u.value)} ${SMOKE}</span>

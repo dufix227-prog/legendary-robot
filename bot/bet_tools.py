@@ -14,6 +14,19 @@ from bets_engine import TIE_CODES, BetError, _limits, _notify, _tour_open
 SETTLED = ("won", "lost", "void", "cashout")
 
 
+def rank_by_level(level: int) -> str:
+    # звания от уровня: 1 Окурок → 2-3 Пепел → 4-5 Сигарета → 6-9 Сигара → 10+ Легенда
+    if level >= 10:
+        return "Легенда"
+    if level >= 6:
+        return "Сигара"
+    if level >= 4:
+        return "Сигарета"
+    if level >= 2:
+        return "Пепел"
+    return "Окурок"
+
+
 # ===== кэшаут =====
 
 def _paused_matches() -> set[int]:

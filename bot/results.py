@@ -113,7 +113,8 @@ def _result_letter(sf: int, sa: int) -> str:
 
 def finalize_match(match_id: int, score1: int, score2: int,
                    pens1: int | None = None, pens2: int | None = None,
-                   goals: list[dict] | None = None, actor: str = "ocr") -> dict:
+                   goals: list[dict] | None = None, actor: str = "ocr",
+                   players: list[dict] | None = None) -> dict:
     """Финализация СРАЗУ без подтверждения (решение 09). goals: [{side,name,minute,is_penalty?}].
     Пересчёт при споре — просто вызвать ещё раз с новым счётом."""
     c = appdb.db()
@@ -208,6 +209,12 @@ def finalize_match(match_id: int, score1: int, score2: int,
     if bets_engine:
         _unfreeze_bets(c, match_id)
 
+    # голы/передачи игроков (бомбардиры); при правке без новой таблицы — оставляем прежнюю
+    import league_stats
+    if players is not None or goals or not c.execute(
+            "SELECT 1 FROM match_player_stats WHERE match_id=?", (match_id,)).fetchone():
+        league_stats.save_player_stats(c, m, goals, players)
+
     # 7) доходы клубов: стадион + спонсор (пересчёт при правке счёта без задвоения)
     import club_economy
     club_economy.apply_match_income(c, match_id)
@@ -220,6 +227,12 @@ def finalize_match(match_id: int, score1: int, score2: int,
                 bets_engine.settle_match(mid)
             except Exception:
                 log.exception("settle_match упал на матче %s", mid)
+
+    try:
+        import league_stats
+        league_stats.risk_scan([match_id])  # матч сыгран — его предупреждения закрываются
+    except Exception:
+        log.exception("risk_scan после матча %s упал", match_id)
 
     # 8) линия: результат сдвинул Elo и голы — пересчитать кэфы открытых матчей турнира
     try:

@@ -186,6 +186,11 @@ def place_bet(user_row: dict, amount: int, selections: list[dict],
         _notify(c, uid, f"Ставка принята: {amount} дыма × {round(total_odds, 2)} → до {potential}")
         c.commit()
         balance -= amount
+        try:
+            import league_stats
+            league_stats.risk_scan([leg["match_id"] for leg in legs])
+        except Exception:
+            log.exception("risk_scan после ставки #%s упал", bet_id)
         return {"bet_id": bet_id, "balance": balance, "potential_win": potential,
                 "total_odds": round(total_odds, 3), "duplicate": False}
     finally:

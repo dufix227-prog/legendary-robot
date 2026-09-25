@@ -889,5 +889,11 @@ def finalize_season(tournament_id: int, actor_tg: int | None = None) -> dict:
     )
     c.commit()
     c.close()
+    try:
+        import league_stats
+        bettor_awards = league_stats.award_bettors(tournament_id)
+    except Exception:
+        log.exception("награды капперам за сезон %s не выданы", tournament_id)
+        bettor_awards = []
     return {"ok": True, "tournament": preview["tournament"],
-            "prize_rows": paid, "moves": moves, "cup_winners": cup_winners}
+            "prize_rows": paid, "moves": moves, "cup_winners": cup_winners, "bettor_awards": bettor_awards}

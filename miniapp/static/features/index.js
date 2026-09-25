@@ -6,4 +6,5 @@ import './progress.js';
 import './leagues.js';
 import './betting.js';
 import './clubs.js';
+import './extras.js';
 import './admin.js';

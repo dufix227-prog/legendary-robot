@@ -1,0 +1,61 @@
+/* ===== бомбардиры ===== */
+.standings.scorers td:nth-child(3), .standings.scorers td:nth-child(5) { color: var(--muted); }
+.sc-name { display: flex; flex-direction: column; align-items: flex-start; text-align: left; font-weight: 700; }
+.sc-name small, .sc-row small { color: var(--muted); font-size: 11px; font-weight: 600; }
+.sc-row { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+
+/* ===== события матча ===== */
+.ev-card { margin-top: 14px; }
+.ev-card .card-title .ev-photo { margin-left: auto; padding: 5px 10px; font-size: 12px; }
+.ev-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.ev-cols > div:last-child { text-align: right; }
+.ev-p { font-size: 13px; font-weight: 700; padding: 2px 0; }
+.ev-p span { margin-left: 4px; font-size: 11.5px; color: var(--muted); }
+.match-photo { width: 100%; border-radius: 12px; display: block; }
+
+/* ===== профиль игрока ===== */
+.pp-head { margin: -4px 0 12px; }
+.pp-rank { font-weight: 800; font-size: 14px; margin-bottom: 2px; }
+.pp-awards { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.pp-award { background: color-mix(in srgb, #f3c04e 16%, var(--bg3)); border: 1px solid color-mix(in srgb, #f3c04e 40%, transparent);
+  border-radius: 12px; padding: 6px 10px; font-weight: 800; font-size: 12.5px; display: flex; flex-direction: column; }
+.pp-award small { color: var(--muted); font-weight: 600; font-size: 10.5px; }
+.pp-ach { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-ach span { background: var(--bg3); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
+.pp-ach .r-legendary { color: #f3c04e; }
+.pp-ach .r-epic { color: #b07cff; }
+.pp-ach .r-rare { color: #5aa9ff; }
+[data-profile] { cursor: pointer; }
+
+/* ===== мои матчи ===== */
+.mm-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 9px 0;
+  border-top: 1px solid var(--line); font-size: 13.5px; cursor: pointer; }
+.mm-row .sub { font-size: 11.5px; }
+.mm-state { font-size: 11.5px; font-weight: 800; color: var(--muted); white-space: nowrap; }
+.mm-row.open .mm-state { color: var(--green); }
+.mm-row.overdue .mm-state, .mm-row.disputed .mm-state { color: var(--red); }
+.mm-row.upcoming { opacity: .7; }
+.mm-recent { display: flex; gap: 5px; flex-wrap: wrap; }
+.mm-recent .rc { cursor: pointer; }
+
+/* ===== линия: горячее и движение кэфов ===== */
+.lx-card { padding: 10px 12px; margin-bottom: 10px; }
+.lx-toggle { width: 100%; text-align: left; font-weight: 800; font-size: 13.5px; color: var(--text); }
+.lx-h { margin: 10px 0 6px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; font-size: 10.5px; }
+.lx-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.lx-hot { flex: 0 0 170px; background: var(--bg3); border-radius: 12px; padding: 9px 10px; display: flex; flex-direction: column;
+  gap: 3px; font-size: 12.5px; cursor: pointer; }
+.lx-hot .sub { font-size: 11px; }
+.lx-pop { font-size: 11px; font-weight: 700; color: var(--accent); }
+.lx-mv { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line);
+  font-size: 12.5px; cursor: pointer; }
+.lx-mv > span:last-child { white-space: nowrap; font-weight: 800; }
+.lx-mv .down { color: var(--green); }
+.lx-mv .up { color: var(--red); }
+
+/* ===== админка: риски ===== */
+.risk-row { display: flex; justify-content: space-between; gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.risk-row.high b { color: var(--red); }
+.risk-row .sub { font-size: 11.5px; }
+.risk-act { display: flex; flex-direction: column; gap: 5px; flex: 0 0 auto; }
+.risk-act .chip { padding: 5px 10px; font-size: 11.5px; }
