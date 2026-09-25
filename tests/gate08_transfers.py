@@ -126,5 +126,6 @@ check("фильтр по позиции", all(x["position"] == "ВРТ" for x in
 
 print()
 print("GATE 8:", "OK" if not fails else f"ПРОВАЛЫ: {fails}")
-os.remove("/tmp/gate8.db")
+if os.path.exists("/tmp/gate8.db"):  # на Postgres файла нет
+    os.remove("/tmp/gate8.db")
 sys.exit(1 if fails else 0)

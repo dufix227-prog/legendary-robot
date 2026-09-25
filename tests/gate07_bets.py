@@ -212,5 +212,6 @@ for i in range(7):
 
 print()
 print("GATE 7:", "OK" if not fails else f"ПРОВАЛЫ: {fails}")
-os.remove("/tmp/gate7.db")
+if os.path.exists("/tmp/gate7.db"):  # на Postgres файла нет
+    os.remove("/tmp/gate7.db")
 sys.exit(1 if fails else 0)

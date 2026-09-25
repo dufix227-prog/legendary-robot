@@ -312,6 +312,7 @@ async def cmd_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("Календарь не сгенерирован: в дивизионах меньше 2 клубов.")
         return
     core.audit(tid, update.effective_user.id, "generate_calendar", f"matches={total}")
+    t = league.get_tournament(tid)  # total_tours появился только что
     await update.message.reply_text(
         f"✅ Календарь «{t['name']}»: туров {t['total_tours']}, матчей {total}. "
         f"Тур 1 открыт (дедлайн {t['tour_days']} дн.). Правка пар — до открытия тура: /editpair <матч> <дом> <гости>"

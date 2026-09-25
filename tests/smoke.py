@@ -43,8 +43,12 @@ import db  # noqa: E402
 db.init_db()
 db.init_db()
 c = db.db()
-tables = [r[0] for r in c.execute(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()]
+if c.backend == "postgres":
+    tables = [r["table_name"] for r in c.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema='public'").fetchall()]
+else:
+    tables = [r[0] for r in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()]
 c.close()
 step("схема: 34+ таблиц идемпотентно", len(tables) >= 34, f"{len(tables)}")
 step("схема: club_players/promo/user_streaks/ties",
@@ -121,8 +125,7 @@ try:
         step("HTTP: ядро эндпоинтов 200", True)
 
     # 403 заморозке
-    import sqlite3
-    raw = sqlite3.connect(SMOKE_DB)
+    raw = db.db()
     raw.execute("UPDATE users SET is_frozen=1, freeze_reason='смок-бан' WHERE telegram_id=555000")
     raw.commit()
     raw.close()
@@ -130,7 +133,7 @@ try:
     step("HTTP замороженный: 403 с причиной", st == 403 and "смок-бан" in (body.get("reason") or ""))
 
     # ставка по HTTP
-    raw = sqlite3.connect(SMOKE_DB)
+    raw = db.db()
     raw.execute("UPDATE users SET is_frozen=0, freeze_reason=NULL WHERE telegram_id=555000")
     raw.commit()
     raw.close()

@@ -278,6 +278,7 @@ export async function openCardForm(card = null, opts = {}) {
       <div class="cf-h"><span class="cf-num">${n0 + 2}</span>✍️ Данные карточки</div>
       <label class="cf-full"><span class="cf-lbl">Имя игрока</span>
       <input class="amount-input cf-in" id="cf-name" maxlength="40" placeholder="Например: Mbappé" value="${v('name')}"></label>
+      <div class="cf-dir" id="cf-dir" hidden></div>
       <div class="cf-grid2 cf-ovrpos">
         <label><span class="cf-lbl">OVR</span><input class="amount-input cf-in" id="cf-rating" type="number" inputmode="numeric" min="40" max="150" placeholder="105" value="${v('rating')}"></label>
         <label><span class="cf-lbl">Позиция</span><select class="amount-input cf-in" id="cf-position">
@@ -562,6 +563,37 @@ async function renderAdminQueue() {
   box.innerHTML = list ? queueHtml(list) : '<div class="empty-note">Нет доступа к очереди.</div>';
 }
 
+async function renderDirectoryCard() {
+  if (!state.user?.is_root) return;
+  let card = $('#admin-directory-card');
+  if (!card) {
+    card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'admin-directory-card';
+    const audit = $('#admin-audit')?.parentElement;
+    if (audit) audit.parentElement.insertBefore(card, audit); else $('#admin-sheet .sheet')?.appendChild(card);
+  }
+  let st;
+  try { st = await api('/api/directory/status'); } catch (_) { card.remove(); return; }
+  card.innerHTML = `<div class="card-title">📚 Справочник реальных игроков</div>
+    <div class="sub" style="margin-bottom:8px">${st.count ? `${fmt(st.count)} игроков · снимок на ${esc(st.snapshot)}` : 'Пусто — загрузи снимок'}.
+      Источник: открытый датасет Transfermarkt (${esc(st.source)}). Трансферы в сезоне ничего не меняют, пока не обновишь.</div>
+    <div class="promo-row"><input class="amount-input" id="dir-snap" type="date" style="margin:0;font-size:14px" value="${new Date().toISOString().slice(0, 10)}">
+      <button class="bonus-btn" id="dir-import" style="width:auto;padding:12px 16px">${st.count ? 'Обновить' : 'Загрузить'}</button></div>`;
+  card.querySelector('#dir-import').onclick = async (e) => {
+    if (st.count && !confirm('Заменить справочник свежим снимком?')) return;
+    e.target.disabled = true;
+    e.target.textContent = 'Загружаю…';
+    try {
+      const r = await api('/api/admin/directory/import', { method: 'POST', body: JSON.stringify({ snapshot: $('#dir-snap').value }) });
+      toast(`Справочник: ${fmt(r.count)} игроков`);
+    } catch (err) { toast(err.message); }
+    renderDirectoryCard();
+  };
+}
+
+hooks.adminCards.push(renderDirectoryCard);
+
 hooks.adminCards.push(() => {
   let card = $('#admin-cards-card');
   if (!card) {
@@ -610,9 +642,39 @@ document.addEventListener('change', (ev) => {
   else if (ev.target.id === 'cf-position') { cf.alt.delete(ev.target.value); $('#cf-alt').innerHTML = altChips(); }
 });
 
+/* ===== справочник реальных игроков: автокомплит имени ===== */
+
+const dir = { timer: null, seq: 0, items: [] };
+
+function dirSearch(q) {
+  clearTimeout(dir.timer);
+  const box = $('#cf-dir');
+  if (!box) return;
+  if (q.trim().length < 3) { box.hidden = true; return; }
+  dir.timer = setTimeout(async () => {
+    const seq = ++dir.seq;
+    let players;
+    try { ({ players } = await api(`/api/directory/search?q=${encodeURIComponent(q)}`)); } catch (_) { return; }
+    if (seq !== dir.seq || !$('#cf-dir')) return;
+    dir.items = players;
+    box.innerHTML = players.map((p, i) => `<button type="button" class="cf-dir-item" data-dir-pick="${i}">
+      <b>${esc(p.name)}</b><span>${esc([p.position, p.real_club, p.nation].filter(Boolean).join(' · '))}</span></button>`).join('');
+    box.hidden = !players.length;
+  }, 250);
+}
+
+function dirPick(p) {
+  // из справочника — только реальные данные; OVR и характеристики карточки FC Mobile вводятся отдельно
+  fillForm({ name: p.name, position: p.position, nation: p.nation, real_club: p.real_club, league: p.league,
+    foot: p.foot, height_cm: p.height_cm }, 'cf-ocr');
+  $('#cf-dir').hidden = true;
+  toast('Данные игрока подставлены из справочника — добавь OVR и характеристики карточки');
+}
+
 document.addEventListener('input', (ev) => {
   // правка руками снимает подсветку «заполнено автоматически»
   if (ev.target.classList?.contains('cf-ocr')) ev.target.classList.remove('cf-ocr');
+  if (ev.target.id === 'cf-name') dirSearch(ev.target.value);
 });
 
 document.addEventListener('submit', (ev) => {
@@ -625,6 +687,8 @@ document.addEventListener('click', async (ev) => {
   const t = ev.target;
   const q = (sel) => t.closest(sel);
   let el;
+  if ((el = q('[data-dir-pick]'))) return dirPick(dir.items[Number(el.dataset.dirPick)]);
+  if (!q('#cf-dir') && $('#cf-dir')) $('#cf-dir').hidden = true;
   if ((el = q('[data-card-add]'))) return openCardForm(null, { club: el.dataset.cardAdd || '' });
   if ((el = q('[data-card-view]'))) return openCardSheet(el.dataset.cardView);
   if ((el = q('[data-card-star]'))) {
